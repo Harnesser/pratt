@@ -1,23 +1,14 @@
 
-enum Operator {
-
-}
-
 #[derive(Debug)]
 enum Token {
     Literal(i32),
     Plus,
 }
 
-#[derive(Debug)]
-struct Var {
-    name: String,
-    value: i32,
-}
-
-#[derive(Debug)]
+//#[derive(Debug)]
 enum Expr<'a> {
-    Var(&'a Var),
+    Value(i32),
+    #[allow(dead_code)]
     Plus(&'a Expr<'a>, &'a Expr<'a>),
 }
 
@@ -27,8 +18,8 @@ impl Expr<'_> {
 
         match self {
 
-            Expr::Var(a) => {
-                a.value
+            Expr::Value(a) => {
+                *a
             },
             Expr::Plus(a, b) => {
                 let av = a.eval();
@@ -114,7 +105,7 @@ fn tokenise(expr: &str) -> Vec<Token> {
 
     } // loop
 
-    if buf.len() > 0 {
+    if !buf.is_empty() {
         let val = buf.parse::<i32>().unwrap();
         let token = Token::Literal(val);
         tokens.push(token);
@@ -125,9 +116,17 @@ fn tokenise(expr: &str) -> Vec<Token> {
     tokens
 }
 
+
+fn parse<'a>(_tokens: Vec<Token>) -> Expr<'a> {
+    let v = 23;
+    Expr::Value(v)
+}
+
+
 fn eval_expression(expr: &str) -> i32 {
     let tokens = tokenise(expr);
-    return 0;
+    let expr = parse(tokens);
+    expr.eval()
 }
 
 fn main() {
