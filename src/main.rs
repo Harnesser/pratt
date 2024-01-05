@@ -11,6 +11,11 @@
 //! * Brackets         : `(a + b) * c`
 //! * Subtraction      : `a - b`
 //! * Unary Minus/Plus : `-a`, `+a`
+//! * Exponentials     : `a ** b ** c`
+//!     - right associative, 2-char symbol
+//!     - keeping `^` for XOR
+//!     - negative exponents not supported, cos rust doesn't support
+//!       them for integers.
 //!
 //! # Not Supported
 //!
@@ -20,9 +25,6 @@
 //!
 //! Arithmetic Operators
 //! * TODO: Division         : `a / b`
-//! * TODO: Exponentials     : `a ** b ** c`
-//!     - right associative, 2-char symbol
-//!     - keeping `^` for XOR
 //!
 //! # Stretch Goals
 //!
@@ -60,6 +62,8 @@ enum Token {
     Sub,
     Mul,
 
+    Exp,
+
     UnAdd,
     UnSub,
 
@@ -82,23 +86,32 @@ impl Token {
             Token::Mul => 30,
             Token::UnAdd => 40,
             Token::UnSub => 40,
+            Token::Exp => 45,
             Token::Bopen => 50,
             Token::Bclose => 50,
         }
     }
 
-    #[allow(dead_code)]
     fn is_binary(&self) -> bool {
-        matches!(self, Token::Add | Token::Sub | Token::Mul)
+        matches!(self,
+                 Token::Add | Token::Sub |
+                 Token::Mul |
+                 Token::Exp)
     }
 
-    #[allow(dead_code)]
     fn is_unary(&self) -> bool {
         matches!(self,
             Token::UnAdd | Token::UnSub |
             Token::Add | Token::Sub
         )
+    }
 
+    /// return true if this token beats token `t2` in a precedence fight
+    fn wins_over(&self, t2: Token) -> bool {
+        let p_this = self.precedence();
+        let p_t2 = t2.precedence();
+        println!("prec {} vs {}", p_this, p_t2);
+        p_this < p_t2
     }
 }
 
@@ -153,7 +166,15 @@ fn tokenise(expr: &str) -> Vec<Token> {
             },
 
             '*' => {
-                tokens.push(Token::Mul);
+                if let Some('*') = c_next {
+                    println!("exponential");
+                    tokens.push(Token::Exp);
+                    // consume
+                    _ = text_iter.next().unwrap();
+                    c_next = text_iter.peek().copied();
+                } else {
+                    tokens.push(Token::Mul);
+                }
             },
 
             ')' => {
@@ -209,6 +230,10 @@ enum ExprBoxed {
         a: Box<ExprBoxed>,
         b: Box<ExprBoxed>,
     },
+    Exp {
+        m: Box<ExprBoxed>,
+        e: Box<ExprBoxed>,
+    },
 }
 
 impl ExprBoxed {
@@ -219,6 +244,12 @@ impl ExprBoxed {
 
             ExprBoxed::LiteralInt {literal} => {
                 *literal
+            },
+
+            ExprBoxed::Exp {m, e} => {
+                let mv = m.eval();
+                let ev = e.eval();
+                mv.pow(ev.try_into().unwrap())
             },
 
             ExprBoxed::UnAdd {a} => {
@@ -296,6 +327,16 @@ impl ExprBoxed {
                 let u = labels.len() - 1;
                 let v1 = a.dot(labels, edges);
                 let v2 = b.dot(labels, edges);
+                edges.push((u, v1));
+                edges.push((u, v2));
+                u
+            }
+
+            ExprBoxed::Exp {m, e} => {
+                labels.push("**".to_string());
+                let u = labels.len() - 1;
+                let v1 = m.dot(labels, edges);
+                let v2 = e.dot(labels, edges);
                 edges.push((u, v1));
                 edges.push((u, v2));
                 u
@@ -466,12 +507,9 @@ impl ShuntingYard<'_> {
     /// Will pop the stack until the token at the top has an equal or lower precedence
     /// to the token we want to push. Then we push.
     fn push_operator(&mut self, t: Token) {
-        let t_prec = t.precedence();
-
         loop {
-            let top_prec = self.operator_stack[self.operator_stack.len()-1].precedence();
-            println!("prec {} vs {}", t_prec, top_prec);
-            if top_prec > t_prec {
+            let top_op = self.operator_stack[self.operator_stack.len()-1];
+            if t.wins_over(top_op) {
                 self.pop_operator();
             } else {
                 break;
@@ -501,6 +539,10 @@ impl ShuntingYard<'_> {
                 },
                 Token::Mul => {
                     let expr = ExprBoxed::Mul{a: Box::new(a), b: Box::new(b)};
+                    self.expr_stack.push(expr);
+                },
+                Token::Exp => {
+                    let expr = ExprBoxed::Exp{m: Box::new(a), e: Box::new(b)};
                     self.expr_stack.push(expr);
                 },
                 _ => {}
@@ -573,7 +615,13 @@ fn expr_to_filename(expr: &str) -> String {
 // Read from args?
 fn main() {
     assert_eq!(10,  eval_expression("-(-23 - -10) - -(-5 - -2)"));
+    println!("4^(3^2) = {:?}", 4i32.checked_pow(3i32.pow(2) as u32) );
+    println!("(4^3)^2 = {:?}", (4i32.pow(3)).checked_pow(2) );
+
+    // TODO? interesting to catch this in this parser?
+    //eval_expression("2**-3");
 }
+
 
 
 #[cfg(test)]
@@ -607,6 +655,16 @@ mod test {
         assert_eq!(23,  eval_expression("+23"));
         assert_eq!(-23,  eval_expression("-23"));
         assert_eq!(960, eval_expression("10*(3+9)*8"));
+    }
+
+    #[test]
+    fn test_exponents() {
+        assert_eq!(  2i32.pow(3),  eval_expression("2**3"));
+        assert_eq!( -16, eval_expression("-2**4"));
+        assert_eq!(  16, eval_expression("(-2)**4"));
+        //assert_eq!( 2i32.pow(-3), eval_expression("2**-3")); // rust barfs
+        assert_eq!( 2i32.pow(3), eval_expression("2**-(-2 -1)"));
+        assert_eq!(4i32.pow(3i32.pow(2).try_into().unwrap()), eval_expression("4**3**2"));
     }
 
 }
