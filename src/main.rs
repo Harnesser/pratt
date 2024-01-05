@@ -7,9 +7,10 @@
 //!
 //! Arithmetic Operators
 //! * Addition         : `a + b`
-//! * Multiplication   : `a * b`
-//! * Brackets         : `(a + b) * c`
 //! * Subtraction      : `a - b`
+//! * Multiplication   : `a * b`
+//! * Division         : `a / b`
+//! * Brackets         : `(a + b) * c`
 //! * Unary Minus/Plus : `-a`, `+a`
 //! * Exponentials     : `a ** b ** c`
 //!     - right associative, 2-char symbol
@@ -24,7 +25,7 @@
 //! * TODO: Pratt
 //!
 //! Arithmetic Operators
-//! * TODO: Division         : `a / b`
+//! * (nothing planned unimplemented)
 //!
 //! # Stretch Goals
 //!
@@ -61,6 +62,7 @@ enum Token {
     Add,
     Sub,
     Mul,
+    Div,
 
     Exp,
 
@@ -84,6 +86,7 @@ impl Token {
             Token::Add => 20,
             Token::Sub => 20,
             Token::Mul => 30,
+            Token::Div => 30,
             Token::UnAdd => 40,
             Token::UnSub => 40,
             Token::Exp => 45,
@@ -95,7 +98,7 @@ impl Token {
     fn is_binary(&self) -> bool {
         matches!(self,
                  Token::Add | Token::Sub |
-                 Token::Mul |
+                 Token::Mul | Token::Div |
                  Token::Exp)
     }
 
@@ -111,7 +114,15 @@ impl Token {
         let p_this = self.precedence();
         let p_t2 = t2.precedence();
         println!("prec {} vs {}", p_this, p_t2);
-        p_this < p_t2
+
+        if p_this == p_t2 {
+            // if == and left-assoc, true
+            // only Exp is right-assoc
+            !matches!(self, Token::Exp)
+        } else {
+            p_this > p_t2
+        }
+
     }
 }
 
@@ -163,6 +174,10 @@ fn tokenise(expr: &str) -> Vec<Token> {
 
             '-' => {
                 tokens.push(Token::Sub);
+            },
+
+            '/' => {
+                tokens.push(Token::Div);
             },
 
             '*' => {
@@ -230,6 +245,10 @@ enum ExprBoxed {
         a: Box<ExprBoxed>,
         b: Box<ExprBoxed>,
     },
+    Div {
+        a: Box<ExprBoxed>,
+        b: Box<ExprBoxed>,
+    },
     Exp {
         m: Box<ExprBoxed>,
         e: Box<ExprBoxed>,
@@ -263,6 +282,12 @@ impl ExprBoxed {
                 let av = a.eval();
                 let bv = b.eval();
                 av * bv
+            },
+
+            ExprBoxed::Div {a, b} => {
+                let av = a.eval();
+                let bv = b.eval();
+                av / bv
             },
 
             ExprBoxed::Add {a, b} => {
@@ -324,6 +349,16 @@ impl ExprBoxed {
 
             ExprBoxed::Mul {a, b} => {
                 labels.push('*'.to_string());
+                let u = labels.len() - 1;
+                let v1 = a.dot(labels, edges);
+                let v2 = b.dot(labels, edges);
+                edges.push((u, v1));
+                edges.push((u, v2));
+                u
+            }
+
+            ExprBoxed::Div {a, b} => {
+                labels.push('/'.to_string());
                 let u = labels.len() - 1;
                 let v1 = a.dot(labels, edges);
                 let v2 = b.dot(labels, edges);
@@ -509,7 +544,7 @@ impl ShuntingYard<'_> {
     fn push_operator(&mut self, t: Token) {
         loop {
             let top_op = self.operator_stack[self.operator_stack.len()-1];
-            if t.wins_over(top_op) {
+            if top_op.wins_over(t) {
                 self.pop_operator();
             } else {
                 break;
@@ -539,6 +574,10 @@ impl ShuntingYard<'_> {
                 },
                 Token::Mul => {
                     let expr = ExprBoxed::Mul{a: Box::new(a), b: Box::new(b)};
+                    self.expr_stack.push(expr);
+                },
+                Token::Div => {
+                    let expr = ExprBoxed::Div{a: Box::new(a), b: Box::new(b)};
                     self.expr_stack.push(expr);
                 },
                 Token::Exp => {
@@ -607,6 +646,7 @@ fn expr_to_filename(expr: &str) -> String {
     s = s.replace('*', "MUL");
     s = s.replace('(', "BRO");
     s = s.replace(')', "BRC");
+    s = s.replace('/', "DIV");
     s += ".dot";
     s = "dot/".to_string() + &s;
     s
@@ -665,6 +705,16 @@ mod test {
         //assert_eq!( 2i32.pow(-3), eval_expression("2**-3")); // rust barfs
         assert_eq!( 2i32.pow(3), eval_expression("2**-(-2 -1)"));
         assert_eq!(4i32.pow(3i32.pow(2).try_into().unwrap()), eval_expression("4**3**2"));
+    }
+
+    #[test]
+    fn test_division() {
+        assert_eq!(5, eval_expression("10/2"));
+        assert_eq!(5, eval_expression("-10/-2"));
+        assert_eq!((10/2)*3, eval_expression("(10/2)*3"));
+        assert_eq!(10/(2*3), eval_expression("10/(2*3)"));
+        assert_eq!((10/2)*3, eval_expression("10/2*3"));
+        assert_eq!((10*2)/3, eval_expression("10*2/3"));
     }
 
 }
