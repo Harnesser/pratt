@@ -1,19 +1,46 @@
 //! Expression Parsing Experimentation
 //!
-//! Supported:
-//! * Addition       : a + b
-//! * Multiplication : a * b 
+//! # Supported
 //!
-//! Not Supported:
-//! * Unary Minus/Plus : -a +a
-//! * Division         : a / b
-//! * Subtraction      : a - b
-//! * Exponentials     : a ** b ** c
+//! Parsing Algorithms
+//! * Shunting Yard
+//!
+//! Arithmetic Operators
+//! * Addition         : a + b
+//! * Multiplication   : a * b
 //! * Brackets         : (a + b) * c
 //!
+//!
+//! # Not Supported
+//!
+//! Parsing Algorithms
+//! * TODO: Precedence Climbing
+//! * TODO: Pratt
+//!
+//! Arithmetic Operators
+//! * TODO: Unary Minus/Plus : -a, +a
+//! * TODO: Division         : a / b
+//! * TODO: Subtraction      : a - b
+//! * TODO: Exponentials     : a ** b ** c
+//!
+//! Logic Operators    :
+//! * TODO: Not              : !a
+//! * TODO: And              : a && b
+//! * TODO: Or               : a || b
+//! * TODO: Xor              : a ^ b
+//!
+//! Bitwise Operators :
+//! * TODO: BwNot            : ~a
+//! * TODO: BwAnd            : a & b
+//! * TODO: BwOr             : a | b
+//! * TODO: BwXor            : a ^ b
+//!
+//! Reduction Operators
+//! * TODO: RedAnd           : &a
+//! * TODO: RedOr            : |a
+//! * TODO: RedXor           : ^a
+//!
 //! Precedence Parsing:
-//! * Naive shunting algorithm
-//! * TODO: Pratt or maybe Precedence Climbing
 
 use std::path::Path;
 use std::fs::File;
@@ -62,6 +89,8 @@ enum TokeniserState {
     Operator,
 }
 
+/// Tokeniser
+/// Should this even have state?
 fn tokenise(expr: &str) -> Vec<Token> {
 
     let mut tokens: Vec<Token> = vec![];
@@ -99,7 +128,6 @@ fn tokenise(expr: &str) -> Vec<Token> {
                     },
 
                     '(' => {
-                        println!("Int(");
                         tokens.push(Token::Bopen);
                         nxt = TokeniserState::Int;
                     },
@@ -128,7 +156,6 @@ fn tokenise(expr: &str) -> Vec<Token> {
                     },
 
                     ')' => {
-                        println!("Op)");
                         tokens.push(Token::Bclose);
                         nxt = TokeniserState::Operator;
                     },
@@ -199,7 +226,7 @@ impl ExprBoxed {
         }
     }
 
-    // i can't use mem addr of boxes cos i'm allocating all over the 
+    // i can't use mem addr of boxes cos i'm allocating all over the
     // place it seems.
     fn dot(&self, labels: &mut Vec<String>, edges: &mut Vec<(usize, usize)>) -> usize {
         match &self {
@@ -267,16 +294,30 @@ fn write_dot(expr: &ExprBoxed) {
     }
 }
 
-
+/// Shunting-Yard Algorithm
+///
+/// Implementation taken from ["Parsing Expressions by Recursive Descent"][1]
+///
+/// This was painful to implement in this style cos i needed lookahead in the
+/// parser, and i needed to store an interator in the struct.
+///
+/// [1]: https://www.engr.mun.ca/~theo/Misc/exp_parsing.htm#shunting_yard
 struct ShuntingYard<'a> {
+    /// Stack of subexpressions
     expr_stack: Vec<ExprBoxed>,
+    /// Stack of lower-precedence operators
     operator_stack: Vec<Token>,
+    /// Iterator on the token list
     token_iter: Peekable<Box<dyn Iterator<Item=Token> + 'a>>,
+    /// Peek into next token
     next: Token,
 }
 
 impl ShuntingYard<'_> {
 
+    /// Create a new Shunting Yard parser datastructure.
+    ///
+    /// Initialises the token iterator and puts a sentinel token on the stack.
     fn new(tokens: Vec<Token>) -> ShuntingYard<'static> {
         let mut p = ShuntingYard {
             expr_stack: Default::default(),
@@ -289,6 +330,7 @@ impl ShuntingYard<'_> {
         p
     }
 
+    /// Consume the current token and update the lookahead
     fn consume(&mut self) {
         self.token_iter.next();
         self.next = *self.token_iter.peek().unwrap();
@@ -297,6 +339,7 @@ impl ShuntingYard<'_> {
         dbg!(&self.expr_stack);
     }
 
+    /// Expect and consume a token
     fn expect(&mut self, t: Token) {
         if self.next != t {
             panic!("Expected token {:?}, got {:?}", t, self.next);
@@ -307,6 +350,7 @@ impl ShuntingYard<'_> {
         }
     }
 
+    /// Parse a subexpression
     fn expression(&mut self) {
         println!("In expression()");
         println!(" - before while 1");
@@ -330,6 +374,7 @@ impl ShuntingYard<'_> {
         println!("leaving expression()");
     }
 
+    /// Precdence?
     fn precedence(&mut self) {
         println!("In precedence()");
         match self.next {
@@ -352,8 +397,11 @@ impl ShuntingYard<'_> {
         println!("Leaving precedence()");
     }
 
+    /// Push an operator on to the stack
+    ///
+    /// Will pop the stack until the token at the top has an equal or lower precedence
+    /// to the token we want to push. Then we push.
     fn push_operator(&mut self, t: Token) {
-        // pop operators until t has the lowest precedence
         let t_prec = t.precedence();
 
         loop {
@@ -368,6 +416,10 @@ impl ShuntingYard<'_> {
         self.operator_stack.push(t);
     }
 
+    /// Pop an operator on the stack
+    ///
+    /// Also pops some operands from the subexpression stack and pushes
+    /// a new subexpression on that stack.
     fn pop_operator(&mut self) {
         let top_op = &self.operator_stack[self.operator_stack.len()-1];
         println!("Popping {:?}", top_op);
@@ -394,9 +446,9 @@ impl ShuntingYard<'_> {
 
 }
 
-// parse using a naive shunting algorithm
-// this does not do operator precedence
-// Keeps operators on a stack until both their operands have been parsed.
+/// Parse using a naive shunting algorithm
+///
+/// Return an AST
 fn parse_shunting<'a>(tokens: Vec<Token>) -> ExprBoxed {
 
     dbg!(&tokens);
@@ -407,7 +459,9 @@ fn parse_shunting<'a>(tokens: Vec<Token>) -> ExprBoxed {
     parser.expr_stack.pop().unwrap()
 }
 
-
+/// Parse and evaluate the expression in the string.
+///
+/// Also writes a Graphviz file of the resulting AST.
 fn eval_expression(expr: &str) -> i32 {
     println!("Parsing: '{}'", expr);
     let tokens = tokenise(expr);
@@ -416,6 +470,7 @@ fn eval_expression(expr: &str) -> i32 {
     expr.eval()
 }
 
+/// Mostly tests for now
 fn main() {
     // cos of the ordering, the dotfile will be of the failing testcase,
     // or the last one
@@ -425,4 +480,5 @@ fn main() {
     assert_eq!(102, eval_expression("(10 * 3) + 9 * 8"));
     assert_eq!(102, eval_expression("10 * 3 + (9 * 8)"));
     assert_eq!(960, eval_expression("10 * ( 3 + 9 ) * 8"));
+    assert_eq!(960, eval_expression("10*(3+9)*8"));
 }
