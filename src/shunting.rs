@@ -1,8 +1,3 @@
-use crate::Token;
-use crate::ExprBoxed;
-
-use std::iter::Peekable;
-
 /// Shunting-Yard Algorithm
 ///
 /// Implementation taken from ["Parsing Expressions by Recursive Descent"][1]
@@ -11,6 +6,13 @@ use std::iter::Peekable;
 /// parser, and i needed to store an interator in the struct.
 ///
 /// [1]: https://www.engr.mun.ca/~theo/Misc/exp_parsing.htm#shunting_yard
+
+
+use crate::Token;
+use crate::ExprBoxed;
+
+use std::iter::Peekable;
+
 struct ShuntingYard<'a> {
     /// Stack of subexpressions
     expr_stack: Vec<ExprBoxed>,
@@ -22,7 +24,7 @@ struct ShuntingYard<'a> {
     next: Token,
 }
 
-
+#[allow(dead_code)]
 impl ShuntingYard<'_> {
     /// Create a new Shunting Yard parser datastructure.
     ///
@@ -200,7 +202,8 @@ impl ShuntingYard<'_> {
 /// Parse using a naive shunting algorithm
 ///
 /// Return an AST
-pub fn parse_shunting(tokens: Vec<Token>) -> ExprBoxed {
+#[allow(dead_code)]
+pub fn parse(tokens: Vec<Token>) -> ExprBoxed {
 
     dbg!(&tokens);
     let mut parser = ShuntingYard::new(tokens.clone());

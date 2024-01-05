@@ -53,6 +53,7 @@ use std::fs::File;
 use std::io::Write;
 
 mod shunting;
+mod climber;
 
 #[derive(Debug)]
 #[derive(Copy, Clone, PartialEq)]
@@ -417,10 +418,6 @@ fn write_dot(expr: &ExprBoxed, filename: &str) {
     }
 }
 
-
-/// Precendence Climbing
-
-
 /// Parse and evaluate the expression in the string.
 ///
 /// Also writes a Graphviz file of the resulting AST.
@@ -428,7 +425,7 @@ fn eval_expression(expr: &str) -> i32 {
     println!("Parsing: '{}'", expr);
     let filename = expr_to_filename(expr);
     let tokens = tokenise(expr);
-    let expr = shunting::parse_shunting(tokens);
+    let expr = climber::parse(tokens);
     write_dot(&expr, &filename);
     expr.eval()
 }
