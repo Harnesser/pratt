@@ -6,11 +6,11 @@
 //! * Shunting Yard
 //!
 //! Arithmetic Operators
-//! * Addition         : a + b
-//! * Multiplication   : a * b
-//! * Brackets         : (a + b) * c
-//! * Subtraction      : a - b
-//! * Unary Minus/Plus : -a, +a
+//! * Addition         : `a + b`
+//! * Multiplication   : `a * b`
+//! * Brackets         : `(a + b) * c`
+//! * Subtraction      : `a - b`
+//! * Unary Minus/Plus : `-a`, `+a`
 //!
 //! # Not Supported
 //!
@@ -19,27 +19,29 @@
 //! * TODO: Pratt
 //!
 //! Arithmetic Operators
-//! * TODO: Division         : a / b
-//! * TODO: Exponentials     : a ** b ** c
+//! * TODO: Division         : `a / b`
+//! * TODO: Exponentials     : `a ** b ** c`
+//!     - right associative, 2-char symbol
+//!     - keeping `^` for XOR
 //!
 //! # Stretch Goals
 //!
 //! Logic Operators    :
-//! * TODO: Not              : !a
-//! * TODO: And              : a && b
-//! * TODO: Or               : a || b
-//! * TODO: Xor              : a ^ b
+//! * TODO: Not              : `!a`
+//! * TODO: And              : `a && b`
+//! * TODO: Or               : `a || b`
+//! * TODO: Xor              : `a ^ b` (this just bitwise?)
 //!
 //! Bitwise Operators :
-//! * TODO: BwNot            : ~a
-//! * TODO: BwAnd            : a & b
-//! * TODO: BwOr             : a | b
-//! * TODO: BwXor            : a ^ b
+//! * TODO: BwNot            : `~a`
+//! * TODO: BwAnd            : `a & b`
+//! * TODO: BwOr             : `a | b`
+//! * TODO: BwXor            : `a ^ b`
 //!
 //! Reduction Operators
-//! * TODO: RedAnd           : &a
-//! * TODO: RedOr            : |a
-//! * TODO: RedXor           : ^a
+//! * TODO: RedAnd           : `&a`
+//! * TODO: RedOr            : `|a`
+//! * TODO: RedXor           : `^a`
 //!
 //! Precedence Parsing:
 
@@ -568,22 +570,44 @@ fn expr_to_filename(expr: &str) -> String {
     s
 }
 
-/// Mostly tests for now
+// Read from args?
 fn main() {
-    // cos of the ordering, the dotfile will be of the failing testcase,
-    // or the last one
-    assert_eq!(42, eval_expression("10 + 16 * 2"));
-    assert_eq!(162, eval_expression("10 * 16 + 2"));
-    assert_eq!(102, eval_expression("10 * 3 + 9 * 8"));
-    assert_eq!(102, eval_expression("(10 * 3) + 9 * 8"));
-    assert_eq!(102, eval_expression("10 * 3 + (9 * 8)"));
-    assert_eq!(960, eval_expression("10 * ( 3 + 9 ) * 8"));
-    assert_eq!(960, eval_expression("10*(3+9)*8"));
-    assert_eq!(3,  eval_expression("11 - (3 - 1) * 4"));
-    assert_eq!(32,  eval_expression("-(-24 + -10) + -2"));
     assert_eq!(10,  eval_expression("-(-23 - -10) - -(-5 - -2)"));
-    assert_eq!(40,  eval_expression("-(-23 - +10) - +(-5 - +2)"));
-    assert_eq!(23,  eval_expression("+23"));
-    assert_eq!(-23,  eval_expression("-23"));
+}
+
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn test_basic_precedence() {
+        assert_eq!(42, eval_expression("10 + 16 * 2"));
+        assert_eq!(162, eval_expression("10 * 16 + 2"));
+        assert_eq!(102, eval_expression("10 * 3 + 9 * 8"));
+    }
+
+    #[test]
+    fn test_brackets() {
+        assert_eq!(102, eval_expression("(10 * 3) + 9 * 8"));
+        assert_eq!(102, eval_expression("10 * 3 + (9 * 8)"));
+        assert_eq!(960, eval_expression("10 * ( 3 + 9 ) * 8"));
+        assert_eq!(3,  eval_expression("11 - (3 - 1) * 4"));
+    }
+
+    #[test]
+    fn test_unary_arith() {
+        assert_eq!(32,  eval_expression("-(-24 + -10) + -2"));
+        assert_eq!(10,  eval_expression("-(-23 - -10) - -(-5 - -2)"));
+        assert_eq!(40,  eval_expression("-(-23 - +10) - +(-5 - +2)"));
+    }
+
+    #[test]
+    fn test_misc() {
+        assert_eq!(23,  eval_expression("+23"));
+        assert_eq!(-23,  eval_expression("-23"));
+        assert_eq!(960, eval_expression("10*(3+9)*8"));
+    }
+
 }
 
