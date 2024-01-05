@@ -9,7 +9,8 @@
 //! * Addition         : a + b
 //! * Multiplication   : a * b
 //! * Brackets         : (a + b) * c
-//!
+//! * Subtraction      : a - b
+//! * Unary Minus/Plus : -a, +a
 //!
 //! # Not Supported
 //!
@@ -18,10 +19,10 @@
 //! * TODO: Pratt
 //!
 //! Arithmetic Operators
-//! * TODO: Unary Minus/Plus : -a, +a
 //! * TODO: Division         : a / b
-//! * TODO: Subtraction      : a - b
 //! * TODO: Exponentials     : a ** b ** c
+//!
+//! # Stretch Goals
 //!
 //! Logic Operators    :
 //! * TODO: Not              : !a
@@ -48,11 +49,17 @@ use std::io::Write;
 
 use std::iter::Peekable;
 
-#[derive(Debug, Copy, Clone, PartialEq)]
+#[derive(Debug)]
+#[derive(Copy, Clone, PartialEq)]
+#[allow(clippy::upper_case_acronyms)]
 enum Token {
     Literal(i32),
     Add,
+    Sub,
     Mul,
+
+    UnAdd,
+    UnSub,
 
     Bopen,
     Bclose,
@@ -69,7 +76,10 @@ impl Token {
             Token::Sentinel => 1,
             Token::Literal(_) => 10,
             Token::Add => 20,
+            Token::Sub => 20,
             Token::Mul => 30,
+            Token::UnAdd => 40,
+            Token::UnSub => 40,
             Token::Bopen => 50,
             Token::Bclose => 50,
         }
@@ -77,10 +87,16 @@ impl Token {
 
     #[allow(dead_code)]
     fn is_binary(&self) -> bool {
-        match self {
-            Token::Add | Token::Mul => true,
-            _ => false
-        }
+        matches!(self, Token::Add | Token::Sub | Token::Mul)
+    }
+
+    #[allow(dead_code)]
+    fn is_unary(&self) -> bool {
+        matches!(self,
+            Token::UnAdd | Token::UnSub |
+            Token::Add | Token::Sub
+        )
+
     }
 }
 
@@ -98,7 +114,7 @@ fn tokenise(expr: &str) -> Vec<Token> {
     'things: loop {
 
         c = text_iter.next().unwrap();
-        c_next = text_iter.peek().clone().copied();
+        c_next = text_iter.peek().copied();
 
         dbg!(c, c_next, &buf);
 
@@ -130,6 +146,10 @@ fn tokenise(expr: &str) -> Vec<Token> {
                 tokens.push(Token::Add);
             },
 
+            '-' => {
+                tokens.push(Token::Sub);
+            },
+
             '*' => {
                 tokens.push(Token::Mul);
             },
@@ -144,7 +164,7 @@ fn tokenise(expr: &str) -> Vec<Token> {
             }
         }
 
-        if c_next == None {
+        if c_next.is_none() {
             break 'things;
         }
 
@@ -173,6 +193,16 @@ enum ExprBoxed {
         a: Box<ExprBoxed>,
         b: Box<ExprBoxed>,
     },
+    Sub {
+        a: Box<ExprBoxed>,
+        b: Box<ExprBoxed>,
+    },
+    UnAdd {
+        a: Box<ExprBoxed>,
+    },
+    UnSub {
+        a: Box<ExprBoxed>,
+    },
     Mul {
         a: Box<ExprBoxed>,
         b: Box<ExprBoxed>,
@@ -188,16 +218,31 @@ impl ExprBoxed {
             ExprBoxed::LiteralInt {literal} => {
                 *literal
             },
+
+            ExprBoxed::UnAdd {a} => {
+                a.eval()
+            },
+            ExprBoxed::UnSub {a} => {
+                -a.eval()
+            },
+
+            ExprBoxed::Mul {a, b} => {
+                let av = a.eval();
+                let bv = b.eval();
+                av * bv
+            },
+
             ExprBoxed::Add {a, b} => {
                 let av = a.eval();
                 let bv = b.eval();
                 av + bv
             },
-            ExprBoxed::Mul {a, b} => {
+            ExprBoxed::Sub {a, b} => {
                 let av = a.eval();
                 let bv = b.eval();
-                av * bv
-            }
+                av - bv
+            },
+
         }
     }
 
@@ -209,8 +254,33 @@ impl ExprBoxed {
                 labels.push(literal.to_string());
                 labels.len()-1
             },
+
+            ExprBoxed::UnAdd {a} => {
+                labels.push('+'.to_string());
+                let u = labels.len() - 1;
+                let v1 = a.dot(labels, edges);
+                edges.push((u, v1));
+                u
+            },
+            ExprBoxed::UnSub {a} => {
+                labels.push('-'.to_string());
+                let u = labels.len() - 1;
+                let v1 = a.dot(labels, edges);
+                edges.push((u, v1));
+                u
+            },
+
             ExprBoxed::Add {a, b} => {
                 labels.push('+'.to_string());
+                let u = labels.len() - 1;
+                let v1 = a.dot(labels, edges);
+                let v2 = b.dot(labels, edges);
+                edges.push((u, v1));
+                edges.push((u, v2));
+                u
+            },
+            ExprBoxed::Sub {a, b} => {
+                labels.push('-'.to_string());
                 let u = labels.len() - 1;
                 let v1 = a.dot(labels, edges);
                 let v2 = b.dot(labels, edges);
@@ -318,10 +388,8 @@ impl ShuntingYard<'_> {
     fn expect(&mut self, t: Token) {
         if self.next != t {
             panic!("Expected token {:?}, got {:?}", t, self.next);
-        } else {
-            if t != Token::EOF {
-                self.consume();
-            }
+        } else if t != Token::EOF {
+            self.consume();
         }
     }
 
@@ -366,6 +434,25 @@ impl ShuntingYard<'_> {
                 assert_eq!(self.operator_stack.pop(), Some(Token::Sentinel));
             },
 
+            // is unary
+            Token::Add=> {
+                println!("Pushing unary plus");
+                self.operator_stack.push(Token::UnAdd);
+                self.consume();
+                self.precedence();
+            }
+            Token::Sub => {
+                println!("Pushing unary minus");
+                self.operator_stack.push(Token::UnSub);
+                self.consume();
+                self.precedence();
+            }
+
+            // tokeniser doesn't emit these
+            Token::UnSub | Token::UnAdd => {
+            },
+
+            // should not be here
             _ => { unreachable!() }
 
         }
@@ -406,11 +493,31 @@ impl ShuntingYard<'_> {
                     let expr = ExprBoxed::Add{a: Box::new(a), b: Box::new(b)};
                     self.expr_stack.push(expr);
                 },
+                Token::Sub => {
+                    let expr = ExprBoxed::Sub{a: Box::new(a), b: Box::new(b)};
+                    self.expr_stack.push(expr);
+                },
                 Token::Mul => {
                     let expr = ExprBoxed::Mul{a: Box::new(a), b: Box::new(b)};
                     self.expr_stack.push(expr);
                 },
                 _ => {}
+            }
+            let _ = self.operator_stack.pop();
+        } else if top_op.is_unary() {
+            let a = self.expr_stack.pop().unwrap();
+            match top_op {
+                Token::UnAdd => {
+                    let expr = ExprBoxed::UnAdd{a: Box::new(a) };
+                    self.expr_stack.push(expr);
+                },
+                Token::UnSub => {
+                    let expr = ExprBoxed::UnSub{a: Box::new(a) };
+                    self.expr_stack.push(expr);
+                },
+                _ => {
+                    panic!("asdfasdfasdf asdfasdf");
+                }
             }
             let _ = self.operator_stack.pop();
         } else {
@@ -424,7 +531,7 @@ impl ShuntingYard<'_> {
 /// Parse using a naive shunting algorithm
 ///
 /// Return an AST
-fn parse_shunting<'a>(tokens: Vec<Token>) -> ExprBoxed {
+fn parse_shunting(tokens: Vec<Token>) -> ExprBoxed {
 
     dbg!(&tokens);
     let mut parser = ShuntingYard::new(tokens.clone());
@@ -439,7 +546,7 @@ fn parse_shunting<'a>(tokens: Vec<Token>) -> ExprBoxed {
 /// Also writes a Graphviz file of the resulting AST.
 fn eval_expression(expr: &str) -> i32 {
     println!("Parsing: '{}'", expr);
-    let filename = expr_to_filename(&expr);
+    let filename = expr_to_filename(expr);
     let tokens = tokenise(expr);
     let expr = parse_shunting(tokens);
     write_dot(&expr, &filename);
@@ -452,6 +559,7 @@ fn expr_to_filename(expr: &str) -> String {
     let mut s = expr.to_string();
     s = s.replace(' ', "_");
     s = s.replace('+', "ADD");
+    s = s.replace('-', "SUB");
     s = s.replace('*', "MUL");
     s = s.replace('(', "BRO");
     s = s.replace(')', "BRC");
@@ -471,4 +579,11 @@ fn main() {
     assert_eq!(102, eval_expression("10 * 3 + (9 * 8)"));
     assert_eq!(960, eval_expression("10 * ( 3 + 9 ) * 8"));
     assert_eq!(960, eval_expression("10*(3+9)*8"));
+    assert_eq!(3,  eval_expression("11 - (3 - 1) * 4"));
+    assert_eq!(32,  eval_expression("-(-24 + -10) + -2"));
+    assert_eq!(10,  eval_expression("-(-23 - -10) - -(-5 - -2)"));
+    assert_eq!(40,  eval_expression("-(-23 - +10) - +(-5 - +2)"));
+    assert_eq!(23,  eval_expression("+23"));
+    assert_eq!(-23,  eval_expression("-23"));
 }
+
