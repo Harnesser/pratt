@@ -1,11 +1,14 @@
-Pratt Parser
+# Pratt Parser Exploration in Rust
 
-Efficient way to parse an expression with operator precedence into an AST.
-
-* https://journal.stuffwithstuff.com/2011/03/19/pratt-parsers-expression-parsing-made-easy/
+Pratt and related algorihms providei an efficient way to parse an expression with operator precedence into an AST.
 
 Pratt parsing is a generalisation of TDOP (Top-Down Operator Precedence) and Precedence Climbing methods.
 
-* Shunting Yard
-https://www.engr.mun.ca/~theo/Misc/exp_parsing.htm
+
+## Links
+* [Expression Parsing][1]
+* [Pratt Parsers Expression Parsing Made Easy][2]
+
+[1]: https://www.engr.mun.ca/~theo/Misc/exp_parsing.htm
+[2]: https://journal.stuffwithstuff.com/2011/03/19/pratt-parsers-expression-parsing-made-eas
 
