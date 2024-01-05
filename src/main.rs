@@ -1,14 +1,56 @@
+//! Expression Parsing Experimentation
+//!
+//! Supported:
+//! * Addition       : a + b
+//! * Multiplication : a * b 
+//!
+//! Not Supported:
+//! * Unary Minus/Plus : -a +a
+//! * Division         : a / b
+//! * Subtraction      : a - b
+//! * Exponentials     : a ** b ** c
+//! * Brackets         : (a + b) * c
+//!
+//! Precedence Parsing:
+//! * Naive shunting algorithm
+//! * TODO: Pratt or maybe Precedence Climbing
+
 use std::path::Path;
 use std::fs::File;
 use std::io::Write;
 
-#[derive(Debug)]
+use std::iter::Peekable;
+
+#[derive(Debug, Copy, Clone, PartialEq)]
 enum Token {
     Literal(i32),
     Add,
     Mul,
+
+    EOF,
+    Sentinel,
 }
 
+impl Token {
+    #[allow(dead_code)]
+    fn precedence(&self) -> u32 {
+        match self {
+            Token::EOF => 0,
+            Token::Sentinel => 1,
+            Token::Literal(_) => 10,
+            Token::Add => 20,
+            Token::Mul => 30,
+        }
+    }
+
+    #[allow(dead_code)]
+    fn is_binary(&self) -> bool {
+        match self {
+            Token::Add | Token::Mul => true,
+            _ => false
+        }
+    }
+}
 
 enum TokeniserState {
     Int,
@@ -95,7 +137,7 @@ fn tokenise(expr: &str) -> Vec<Token> {
         let token = Token::Literal(val);
         tokens.push(token);
     }
-
+    tokens.push(Token::EOF);
 
     dbg!(&tokens);
     tokens
@@ -209,50 +251,146 @@ fn write_dot(expr: &ExprBoxed) {
 }
 
 
-// parse using a naive shunting algorithm
-// this does not do operator precedence
-fn parse_shunting<'a>(tokens: Vec<Token>) -> ExprBoxed {
+struct ShuntingYard<'a> {
+    expr_stack: Vec<ExprBoxed>,
+    operator_stack: Vec<Token>,
+    token_iter: Peekable<Box<dyn Iterator<Item=Token> + 'a>>,
+    next: Token,
+}
 
-    let mut expr_stack: Vec<ExprBoxed> = Default::default();
-    let mut operator_stack: Vec<Token> = Default::default();
+impl ShuntingYard<'_> {
 
-    // marshall
-    for t in tokens {
-        match t {
-            Token::Add | Token::Mul => {
-                operator_stack.push(t);
-            },
-            Token::Literal(v) => {
-                expr_stack.push(ExprBoxed::LiteralInt {literal: v});
+    fn new(tokens: Vec<Token>) -> ShuntingYard<'static> {
+        let mut p = ShuntingYard {
+            expr_stack: Default::default(),
+            operator_stack: Default::default(),
+            token_iter: (Box::new(tokens.into_iter()) as Box<dyn Iterator<Item=Token>>).peekable(),
+            next: Token::Sentinel,
+        };
+        p.operator_stack.push(Token::Sentinel);
+        p.next = *p.token_iter.peek().unwrap();
+        p
+    }
+
+    fn consume(&mut self) {
+        self.token_iter.next();
+        self.next = *self.token_iter.peek().unwrap();
+        println!("Next: {:?}", self.next);
+        dbg!(&self.operator_stack);
+        dbg!(&self.expr_stack);
+    }
+
+    fn expect(&mut self, t: Token) {
+        if self.next != t {
+            panic!("Expected token {:?}, got {:?}", t, self.next);
+        } else {
+            if t != Token::EOF {
+                self.consume();
             }
         }
     }
 
-    // i have no intuition for what all this boxing is doing allocation-wise
-
-    // unpack
-    for op in operator_stack.iter().rev() {
-        println!("Op: {:?}", op);
-        let b = expr_stack.pop().unwrap();
-        let a = expr_stack.pop().unwrap();
-        match op {
-            Token::Add => {
-                let expr = ExprBoxed::Add{a: Box::new(a), b: Box::new(b)};
-                expr_stack.push(expr);
-            },
-            Token::Mul => {
-                let expr = ExprBoxed::Mul{a: Box::new(a), b: Box::new(b)};
-                expr_stack.push(expr);
-            },
-            _ => {}
+    fn expression(&mut self) {
+        println!("In expression()");
+        println!(" - before while 1");
+        self.precedence();
+        while self.next.is_binary() {
+            self.push_operator(self.next);
+            self.consume();
+            self.precedence();
         }
+        println!(" - before while 2");
+        loop {
+            let top_op = self.operator_stack[self.operator_stack.len()-1];
+            println!("   - {:?}", top_op);
+            if top_op == Token::Sentinel {
+                println!("Done");
+                break;
+            } else {
+                self.pop_operator();
+            }
+        }
+        println!("leaving expression()");
     }
 
-    expr_stack.pop().unwrap()
+    fn precedence(&mut self) {
+        println!("In precedence()");
+        match self.next {
+            Token::Literal(v) => {
+                println!("Pushing literal");
+                self.expr_stack.push(ExprBoxed::LiteralInt {literal: v});
+                self.consume();
+            },
+            _ => { todo!() }
+/*
+            Token::Add | Token::Mul => {
+                self.operator_stack.push(*t);
+            },
+            Token::EOF | Token::Sentinel => todo!()
+*/
+
+        }
+        println!("Leaving precedence()");
+    }
+
+    fn push_operator(&mut self, t: Token) {
+        // pop operators until t has the lowest precedence
+        let t_prec = t.precedence();
+
+        loop {
+            let top_prec = self.operator_stack[self.operator_stack.len()-1].precedence();
+            println!("prec {} vs {}", t_prec, top_prec);
+            if top_prec > t_prec {
+                self.pop_operator();
+            } else {
+                break;
+            }
+        }
+        self.operator_stack.push(t);
+    }
+
+    fn pop_operator(&mut self) {
+        let top_op = &self.operator_stack[self.operator_stack.len()-1];
+        println!("Popping {:?}", top_op);
+        if top_op.is_binary() {
+            let b = self.expr_stack.pop().unwrap();
+            let a = self.expr_stack.pop().unwrap();
+            match top_op {
+                Token::Add => {
+                    let expr = ExprBoxed::Add{a: Box::new(a), b: Box::new(b)};
+                    self.expr_stack.push(expr);
+                },
+                Token::Mul => {
+                    let expr = ExprBoxed::Mul{a: Box::new(a), b: Box::new(b)};
+                    self.expr_stack.push(expr);
+                },
+                _ => {}
+            }
+            let _ = self.operator_stack.pop();
+        } else {
+            panic!("ASDFASDF");
+        }
+
+    }
+
+}
+
+// parse using a naive shunting algorithm
+// this does not do operator precedence
+// Keeps operators on a stack until both their operands have been parsed.
+fn parse_shunting<'a>(tokens: Vec<Token>) -> ExprBoxed {
+
+    dbg!(&tokens);
+    let mut parser = ShuntingYard::new(tokens.clone());
+
+    parser.expression();
+    parser.expect(Token::EOF);
+    parser.expr_stack.pop().unwrap()
 }
 
 
 fn eval_expression(expr: &str) -> i32 {
+    println!("Parsing: '{}'", expr);
     let tokens = tokenise(expr);
     let expr = parse_shunting(tokens);
     write_dot(&expr);
@@ -260,7 +398,9 @@ fn eval_expression(expr: &str) -> i32 {
 }
 
 fn main() {
-    //assert_eq!(42, eval_expression("10 + 16 * 2"));
-    //assert_eq!(372, eval_expression("10 * 3 + 9 * 8"));
+    // cos of the ordering, the dotfile will be of the failing testcase,
+    // or the last one
+    assert_eq!(42, eval_expression("10 + 16 * 2"));
     assert_eq!(162, eval_expression("10 * 16 + 2"));
+    assert_eq!(102, eval_expression("10 * 3 + 9 * 8"));
 }

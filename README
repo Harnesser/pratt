@@ -6,3 +6,6 @@ Efficient way to parse an expression with operator precedence into an AST.
 
 Pratt parsing is a generalisation of TDOP (Top-Down Operator Precedence) and Precedence Climbing methods.
 
+* Shunting Yard
+https://www.engr.mun.ca/~theo/Misc/exp_parsing.htm
+
