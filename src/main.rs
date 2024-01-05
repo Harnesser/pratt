@@ -84,99 +84,74 @@ impl Token {
     }
 }
 
-enum TokeniserState {
-    Int,
-    Operator,
-}
 
 /// Tokeniser
-/// Should this even have state?
 fn tokenise(expr: &str) -> Vec<Token> {
 
     let mut tokens: Vec<Token> = vec![];
-    let mut text_iter = expr.chars();
+    let mut text_iter = expr.chars().peekable();
     let mut buf = "".to_string();
-    let mut state = TokeniserState::Int;
-    let mut nxt;
 
-    let mut c: char = ' ';
-    let mut eat = true;
+    let mut c: char;
+    let mut c_next: Option<char>;
 
     'things: loop {
 
-        dbg!(eat, c, &buf);
+        c = text_iter.next().unwrap();
+        c_next = text_iter.peek().clone().copied();
 
-        if eat {
-            if let Some(c_) = text_iter.next() {
-                c = c_;
-            } else {
-                break 'things;
-            }
+        dbg!(c, c_next, &buf);
 
-            if c == ' ' {
+        match c {
+            ' ' => {
                 continue;
-            }
-        }
+            },
 
-        match state {
-
-            TokeniserState::Int => {
-                match c {
-                    '0' ..= '9' => {
-                        buf.push(c);
-                        nxt = TokeniserState::Int;
+            '0' ..= '9' => {
+                buf.push(c);
+                match c_next {
+                    Some('0' ..= '9') => {
                     },
-
-                    '(' => {
-                        tokens.push(Token::Bopen);
-                        nxt = TokeniserState::Int;
-                    },
-
                     _ => {
+                        // can't figure out how to put this in a closure
                         let val = buf.parse::<i32>().unwrap();
                         buf.clear();
                         let token = Token::Literal(val);
                         tokens.push(token);
-                        eat = false;
-                        nxt = TokeniserState::Operator;
                     }
                 }
             },
 
-            TokeniserState::Operator => {
-                match c {
-                    '+' => {
-                        tokens.push(Token::Add);
-                        nxt = TokeniserState::Int;
-                    },
-
-                    '*' => {
-                        tokens.push(Token::Mul);
-                        nxt = TokeniserState::Int;
-                    },
-
-                    ')' => {
-                        tokens.push(Token::Bclose);
-                        nxt = TokeniserState::Operator;
-                    },
-
-                    _ => {
-                        println!("Here with my friend '{}'", c);
-                        unimplemented!()
-                    }
-                }
-                eat = true;
+            '(' => {
+                tokens.push(Token::Bopen);
             },
 
-            //_ => { unimplemented!() }
+            '+' => {
+                tokens.push(Token::Add);
+            },
 
-        } // match state
+            '*' => {
+                tokens.push(Token::Mul);
+            },
 
-        state = nxt;
+            ')' => {
+                tokens.push(Token::Bclose);
+            },
+
+            _ => {
+                println!("Here with my friend '{}'", c);
+                unimplemented!()
+            }
+        }
+
+        if c_next == None {
+            break 'things;
+        }
 
     } // loop
 
     if !buf.is_empty() {
+        println!("nonempty buffer");
         let val = buf.parse::<i32>().unwrap();
         let token = Token::Literal(val);
         tokens.push(token);
@@ -259,7 +234,7 @@ impl ExprBoxed {
 
 }
 
-fn write_dot(expr: &ExprBoxed) {
+fn write_dot(expr: &ExprBoxed, filename: &str) {
     let mut lines: Vec<String> = vec![];
     lines.push(r#"digraph "expression" {"#.to_string());
 
@@ -279,7 +254,7 @@ fn write_dot(expr: &ExprBoxed) {
     lines.push("}".to_string());
 
     // Create a path to the desired file
-    let path = Path::new("expression.dot");
+    let path = Path::new(filename);
     let display = path.display();
 
     // Open a file in write-only mode, returns `io::Result<File>`
@@ -464,10 +439,25 @@ fn parse_shunting<'a>(tokens: Vec<Token>) -> ExprBoxed {
 /// Also writes a Graphviz file of the resulting AST.
 fn eval_expression(expr: &str) -> i32 {
     println!("Parsing: '{}'", expr);
+    let filename = expr_to_filename(&expr);
     let tokens = tokenise(expr);
     let expr = parse_shunting(tokens);
-    write_dot(&expr);
+    write_dot(&expr, &filename);
     expr.eval()
+}
+
+
+/// Replacements so expr is a valid filename
+fn expr_to_filename(expr: &str) -> String {
+    let mut s = expr.to_string();
+    s = s.replace(' ', "_");
+    s = s.replace('+', "ADD");
+    s = s.replace('*', "MUL");
+    s = s.replace('(', "BRO");
+    s = s.replace(')', "BRC");
+    s += ".dot";
+    s = "dot/".to_string() + &s;
+    s
 }
 
 /// Mostly tests for now
