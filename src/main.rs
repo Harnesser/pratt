@@ -27,6 +27,9 @@ enum Token {
     Add,
     Mul,
 
+    Bopen,
+    Bclose,
+
     EOF,
     Sentinel,
 }
@@ -40,6 +43,8 @@ impl Token {
             Token::Literal(_) => 10,
             Token::Add => 20,
             Token::Mul => 30,
+            Token::Bopen => 50,
+            Token::Bclose => 50,
         }
     }
 
@@ -93,6 +98,12 @@ fn tokenise(expr: &str) -> Vec<Token> {
                         nxt = TokeniserState::Int;
                     },
 
+                    '(' => {
+                        println!("Int(");
+                        tokens.push(Token::Bopen);
+                        nxt = TokeniserState::Int;
+                    },
+
                     _ => {
                         let val = buf.parse::<i32>().unwrap();
                         buf.clear();
@@ -114,6 +125,12 @@ fn tokenise(expr: &str) -> Vec<Token> {
                     '*' => {
                         tokens.push(Token::Mul);
                         nxt = TokeniserState::Int;
+                    },
+
+                    ')' => {
+                        println!("Op)");
+                        tokens.push(Token::Bclose);
+                        nxt = TokeniserState::Operator;
                     },
 
                     _ => {
@@ -317,17 +334,19 @@ impl ShuntingYard<'_> {
         println!("In precedence()");
         match self.next {
             Token::Literal(v) => {
-                println!("Pushing literal");
+                println!("Pushing literal '{}'", v);
                 self.expr_stack.push(ExprBoxed::LiteralInt {literal: v});
                 self.consume();
             },
-            _ => { todo!() }
-/*
-            Token::Add | Token::Mul => {
-                self.operator_stack.push(*t);
+            Token::Bopen => {
+                self.consume();
+                self.operator_stack.push(Token::Sentinel);
+                self.expression();
+                self.expect(Token::Bclose);
+                assert_eq!(self.operator_stack.pop(), Some(Token::Sentinel));
             },
-            Token::EOF | Token::Sentinel => todo!()
-*/
+
+            _ => { unreachable!() }
 
         }
         println!("Leaving precedence()");
@@ -403,4 +422,7 @@ fn main() {
     assert_eq!(42, eval_expression("10 + 16 * 2"));
     assert_eq!(162, eval_expression("10 * 16 + 2"));
     assert_eq!(102, eval_expression("10 * 3 + 9 * 8"));
+    assert_eq!(102, eval_expression("(10 * 3) + 9 * 8"));
+    assert_eq!(102, eval_expression("10 * 3 + (9 * 8)"));
+    assert_eq!(960, eval_expression("10 * ( 3 + 9 ) * 8"));
 }
