@@ -79,6 +79,7 @@ enum Token {
 
 impl Token {
     #[allow(dead_code)]
+    /// Precedences for Shunting-Yard
     fn precedence(&self) -> u32 {
         match self {
             Token::EOF => 0,
@@ -93,6 +94,25 @@ impl Token {
             Token::Exp => 45,
             Token::Bopen => 50,
             Token::Bclose => 50,
+        }
+    }
+
+    #[allow(dead_code)]
+    /// Precedences for Precedence Climbing
+    /// these aren't what's on the webpage, or i get a different
+    /// parse tree for -10/-2
+    fn height(&self) -> usize {
+        match self {
+            Token::Add => 3,
+            Token::Sub => 3,
+            Token::Mul => 4,
+            Token::Div => 4,
+            Token::UnAdd => 5,
+            Token::UnSub => 5,
+            Token::Exp => 8,  // right-associative
+            _ => {
+                panic!("Shouldn't be asking for this precedence");
+            }
         }
     }
 
@@ -426,6 +446,7 @@ fn eval_expression(expr: &str) -> i32 {
     let filename = expr_to_filename(expr);
     let tokens = tokenise(expr);
     let expr = climber::parse(tokens);
+    //let expr = shunting::parse(tokens);
     write_dot(&expr, &filename);
     expr.eval()
 }
@@ -447,10 +468,15 @@ fn expr_to_filename(expr: &str) -> String {
 }
 
 // Read from args?
+// - allow to change alg to?
 fn main() {
-    assert_eq!(10,  eval_expression("-(-23 - -10) - -(-5 - -2)"));
-    println!("4^(3^2) = {:?}", 4i32.checked_pow(3i32.pow(2) as u32) );
-    println!("(4^3)^2 = {:?}", (4i32.pow(3)).checked_pow(2) );
+
+    assert_eq!(5, eval_expression("-10/-2"));
+    //assert_eq!(23,  eval_expression("+23"));
+    //assert_eq!(-23,  eval_expression("-23"));
+    //assert_eq!(10,  eval_expression("-(-23 - -10) - -(-5 - -2)"));
+    //println!("4^(3^2) = {:?}", 4i32.checked_pow(3i32.pow(2) as u32) );
+    //println!("(4^3)^2 = {:?}", (4i32.pow(3)).checked_pow(2) );
 
     // TODO? interesting to catch this in this parser?
     //eval_expression("2**-3");
